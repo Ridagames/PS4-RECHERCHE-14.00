@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 WebKit — Memory Stress</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#090d14;color:#e8eef8;font:15px system-ui,Arial,sans-serif;padding:20px}.wrap{max-width:850px;margin:auto}.panel{background:#121a27;border:1px solid #26364b;border-radius:14px;padding:18px;margin:14px 0}h1{font-size:25px;margin:0 0 8px}p,.muted{color:#aab8ca;line-height:1.5}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#0b111c;padding:12px;border-radius:10px}.num{font-size:24px;font-weight:700;display:block}button,input{font:inherit;border-radius:9px;padding:11px;border:1px solid #34465e;background:#18263a;color:#fff}button{cursor:pointer;margin:5px 5px 5px 0}button.primary{background:#1765bd;border-color:#3288e8}button:disabled{opacity:.45}input{width:150px}.log{height:260px;overflow:auto;white-space:pre-wrap;background:#070b11;border-radius:10px;padding:12px;font:12px ui-monospace,monospace;color:#b8c9dc}.good{color:#70dfa0}.bad{color:#ff8888}.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.small{font-size:12px}
+</style>
+</head>
+<body><main class="wrap">
+<h1>WEBKIT — MEMORY STRESS</h1>
+<p>Test borné d'allocations, de références et de libérations d'objets JavaScript. Aucun accès système, aucune écriture hors limites.</p>
+<section class="panel">
+<div class="row"><label for="cycles">Cycles :</label><input id="cycles" type="number" min="100" max="5000" step="100" value="2000"><label for="seed">Seed :</label><input id="seed" type="number" value="14000044"></div>
+<div class="row"><button class="primary" id="start">Démarrer</button><button id="stop" disabled>Arrêter</button><button id="clear">Effacer le journal</button></div>
+<p class="muted small">Chaque cycle crée un petit graphe d'objets et des TypedArrays, vérifie les données, puis libère les références. Le navigateur décide lui-même quand effectuer le ramasse-miettes : cette page ne force pas le GC.</p>
+</section>
+<section class="panel stats">
+<div class="stat">Cycles terminés<span class="num" id="done">0</span></div><div class="stat">OK<span class="num good" id="ok">0</span></div><div class="stat">Exceptions<span class="num bad" id="errors">0</span></div>
+</section>
+<section class="panel"><strong id="status">En attente</strong><p class="muted small" id="detail">Aucun test lancé.</p><div class="log" id="log" aria-live="polite"></div></section>
+<p class="muted small">Les compteurs et erreurs indiquent le comportement JavaScript observé, pas une preuve de vulnérabilité. Une absence d'erreur ne signifie pas que toute la mémoire a été testée.</p>
+</main>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id), logBox=$('log');
+let running=false, done=0, ok=0, errors=0, state=14000044, lines=[];
+function rand(){state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296}
+function log(s,cls){const line=new Date().toISOString().slice(11,19)+' '+s;lines.push(line);if(lines.length>80)lines.shift();logBox.textContent=lines.join('\n');logBox.scrollTop=logBox.scrollHeight;}
+function update(){ $('done').textContent=done;$('ok').textContent=ok;$('errors').textContent=errors;}
+function cycle(){
+ let refs=[];
+ try{
+  const count=8+Math.floor(rand()*25);
+  for(let i=0;i<count;i++){
+   const size=256+Math.floor(rand()*3840), buffer=new ArrayBuffer(size), view=new Uint8Array(buffer);
+   const marker=Math.floor(rand()*256);view[0]=marker;view[size-1]=marker^255;
+   if(view[0]!==marker||view[size-1] !== (marker^255))throw new Error('TypedArray data mismatch');
+   const obj={id:i,payload:view,meta:{seed:state,active:true}};
+   refs.push(obj);
+  }
+  const map=new Map(), set=new Set();
+  refs.forEach((obj,i)=>{map.set(obj,i);set.add(obj);});
+  if(map.size!==refs.length||set.size!==refs.length)throw new Error('Map/Set size mismatch');
+  const copy=refs.slice();copy.reverse();
+  if(copy.length!==refs.length||copy[0]!==refs[refs.length-1])throw new Error('Reference order mismatch');
+  map.clear();set.clear();refs.length=0;copy.length=0;
+  done++;ok++;
+ }catch(e){done++;errors++;log('EXCEPTION cycle '+done+': '+String(e&&e.name)+': '+String(e&&e.message),'bad');refs.length=0;}
+}
+function finish(reason){running=false;$('start').disabled=false;$('stop').disabled=true;$('status').textContent=reason;$('detail').textContent=done+' cycles terminés · '+ok+' OK · '+errors+' exceptions · seed '+state;$('detail').className='muted small';log('FIN — '+reason+' | '+done+' cycles, '+errors+' exceptions');update();}
+function batch(){
+ if(!running)return;
+ const target=Number($('cycles').value), end=Math.min(done+50,target);
+ while(running&&done<end)cycle();
+ update();
+ if(done>=target){finish('Terminé');return;}
+ setTimeout(batch,0);
+}
+$('start').addEventListener('click',()=>{
+ if(running)return;
+ const n=Math.max(100,Math.min(5000,Math.floor(Number($('cycles').value)||2000)));
+ state=(Number($('seed').value)||14000044)>>>0;$('cycles').value=n;
+ done=0;ok=0;errors=0;lines=[];logBox.textContent='';running=true;
+ $('start').disabled=true;$('stop').disabled=false;$('status').textContent='Test en cours…';
+ $('detail').textContent='Préparation du test · seed initiale '+state;log('START — '+n+' cycles · seed '+state);update();batch();
+});
+$('stop').addEventListener('click',()=>{if(running)finish('Arrêt demandé');});
+$('clear').addEventListener('click',()=>{lines=[];logBox.textContent='';});
+})();
+</script>
+</body></html>
