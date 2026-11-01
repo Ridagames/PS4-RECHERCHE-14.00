@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TypedArray — crash research PS4 14.00</title>
+<style>
+body{margin:0;padding:20px;background:#0b1019;color:#eaf0fa;font:15px system-ui;max-width:850px;margin:auto}
+h1{font-size:23px}.panel{background:#151f2e;border:1px solid #304158;border-radius:12px;padding:15px;margin:14px 0}
+button{padding:11px 15px;border:0;border-radius:8px;background:#2876e8;color:white;font-weight:bold;margin:4px}
+button.secondary{background:#3a4a60}#log{white-space:pre-wrap;overflow-wrap:anywhere;background:#050910;padding:12px;border-radius:8px;max-height:55vh;overflow:auto;font:13px monospace}
+.stat span{display:inline-block;background:#081321;padding:8px;border-radius:7px;margin:3px}
+small{color:#aab8cc}
+</style>
+</head>
+<body>
+<h1>TypedArray / ArrayBuffer — recherche d'anomalies</h1>
+<p>PS4 · firmware 14.00 · journal des étapes et itérations.</p>
+<div class="panel">
+<div class="stat"><span>Test : <b id="test">—</b></span><span>Itération : <b id="iter">0</b></span><span>OK : <b id="ok">0</b></span><span>Erreurs : <b id="err">0</b></span></div>
+<p id="status">En attente.</p>
+<button id="start">Lancer les 4 tests</button><button class="secondary" id="stop">Arrêter</button><button class="secondary" id="clear">Effacer journal</button>
+</div>
+<div class="panel"><b>Journal</b><pre id="log">Page chargée.</pre></div>
+<p><small>Les allocations sont progressives et plafonnées à 32 Mio au total. Les tests répétés sont bornés et cèdent régulièrement la main au navigateur. Un crash doit être consigné séparément d'une exception JavaScript.</small></p>
+<script>
+(function(){
+var $=function(x){return document.getElementById(x)},ok=0,err=0,stop=false,busy=false;
+function log(s){$('log').textContent+='\n'+new Date().toISOString().slice(11,23)+' '+s;$('log').scrollTop=$('log').scrollHeight}
+function counts(){$('ok').textContent=ok;$('err').textContent=err}
+function check(v,m){if(!v)throw Error(m)}
+function step(name,fn){try{fn();ok++;log('OK '+name)}catch(e){err++;log('ERREUR '+name+' : '+e.name+' — '+e.message)}counts()}
+function yieldUI(){return new Promise(function(r){setTimeout(r,0)})}
+async function allocations(){
+$('test').textContent='1/4 Allocations progressives';$('status').textContent='Paliers de mémoire';
+var sizes=[1,2,4,8,16],buffers=[],sum=0;
+for(var i=0;i<sizes.length&&!stop;i++){
+$('iter').textContent=i+1;log('Test 1 / étape '+(i+1)+' : demande '+sizes[i]+' Mio');
+try{var b=new ArrayBuffer(sizes[i]*1024*1024);new Uint8Array(b)[0]=0x5a;buffers.push(b);sum+=sizes[i];ok++;counts();log('Allocation réussie; cumul '+sum+' Mio')}
+catch(e){err++;counts();log('Allocation refusée : '+e.name+' — '+e.message);break}
+await yieldUI();
+}
+buffers.length=0;log('Références aux buffers libérées.');
+}
+async function views(){
+$('test').textContent='2/4 Vues imbriquées';$('status').textContent='Vues superposées';
+for(var i=0;i<300&&!stop;i++){$('iter').textContent=i+1;step('vues itération '+(i+1),function(){
+var b=new ArrayBuffer(1024),u=new Uint8Array(b),a=new Uint16Array(b,16,128),c=new Uint32Array(b,32,64),d=new DataView(b,24,256);
+a[8]=0x1234;c[4]=0x89abcdef;d.setUint16(0,0x55aa,true);
+check(a[8]===0x1234&&c[4]===0x89abcdef&&d.getUint16(0,true)===0x55aa,'valeurs incohérentes');
+check(u.buffer===a.buffer&&a.buffer===c.buffer,'buffer partagé inattendu');
+});if(i%20===19)await yieldUI()}
+}
+async function slices(){
+$('test').textContent='3/4 slice et subarray';$('status').textContent='Cascades de vues et copies';
+for(var i=0;i<300&&!stop;i++){$('iter').textContent=i+1;step('slice/subarray itération '+(i+1),function(){
+var base=new Uint8Array(512);for(var j=0;j<base.length;j++)base[j]=j&255;
+var view=base.subarray(32,480).subarray(8,400),copy=view.slice().subarray(4,300).slice();
+check(copy.length===296,'longueur inattendue');check(copy[0]===base[44],'valeur initiale incorrecte');
+copy[0]^=255;check(base[44]===44,'slice ne semble pas indépendant');
+view[0]=123;check(base[40]===123,'subarray ne partage pas le buffer');
+});if(i%20===19)await yieldUI()}
+}
+async function bounds(){
+$('test').textContent='4/4 Limites';$('status').textContent='Accès hors limites selon JavaScript';
+for(var i=0;i<300&&!stop;i++){$('iter').textContent=i+1;step('limites itération '+(i+1),function(){
+var b=new ArrayBuffer(4),d=new DataView(b),u=new Uint8Array(b),threw=false;
+try{d.getUint32(1)}catch(e){threw=e instanceof RangeError}
+check(threw,'DataView hors limites sans RangeError');
+check(u[4]===undefined,'index TypedArray hors limites différent de undefined');
+threw=false;try{d.setUint8(4,1)}catch(e){threw=e instanceof RangeError}
+check(threw,'DataView.setUint8 hors limites sans RangeError');
+});if(i%20===19)await yieldUI()}
+}
+async function start(){
+if(busy)return;busy=true;stop=false;ok=0;err=0;counts();$('start').disabled=true;$('iter').textContent='0';log('=== DÉBUT SESSION ===');
+var tests=[allocations,views,slices,bounds];
+for(var i=0;i<tests.length&&!stop;i++){try{await tests[i]()}catch(e){err++;counts();log('Erreur test '+(i+1)+' : '+e)}}
+log('=== FIN : '+ok+' OK, '+err+' erreurs; arrêt demandé : '+stop+' ===');
+$('status').textContent=stop?'Arrêt demandé.':'Tests terminés.';busy=false;$('start').disabled=false;
+}
+$('start').onclick=start;$('stop').onclick=function(){stop=true;log('Arrêt demandé après étape en cours')};$('clear').onclick=function(){$('log').textContent='Journal effacé.'};
+})();
+</script>
+</body></html>
