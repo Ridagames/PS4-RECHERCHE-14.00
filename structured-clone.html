@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 14.00 — Structured Clone Probe</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:20px;background:#090d14;color:#e8eef8;font:15px system-ui,Arial,sans-serif}.wrap{max-width:850px;margin:auto}.panel{background:#121a27;border:1px solid #26364b;border-radius:14px;padding:18px;margin:14px 0}h1{font-size:23px;margin:0 0 8px}p{color:#aab8ca;line-height:1.5}.row{display:flex;flex-wrap:wrap;gap:8px}button{padding:11px 15px;border:1px solid #34465e;border-radius:9px;background:#18263a;color:#fff;font:inherit}button.primary{background:#1765bd;border-color:#3288e8}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#0b111c;padding:12px;border-radius:10px}.num{display:block;font-size:24px;font-weight:700}.log{height:300px;overflow:auto;white-space:pre-wrap;background:#070b11;border-radius:10px;padding:12px;font:12px ui-monospace,monospace;color:#b8c9dc}.good{color:#70dfa0}.bad{color:#ff8888}.small{font-size:12px}iframe{display:none}
+</style>
+</head>
+<body><main class="wrap">
+<h1>WEBKIT — STRUCTURED CLONE / postMessage</h1>
+<p>Probe ciblée de la sérialisation d'objets entre deux contextes de la même page. Tests bornés et non destructifs ; aucun accès système ni écriture mémoire arbitraire.</p>
+<section class="panel">
+<div class="row"><button class="primary" id="run">Lancer les 8 tests</button><button id="clear">Effacer</button></div>
+<p class="small">La page crée un contexte iframe local et échange des messages avec lui. Laisse le test se terminer sans fermer le navigateur.</p>
+</section>
+<section class="panel stats">
+<div class="stat">Tests terminés<span class="num" id="done">0/8</span></div>
+<div class="stat">Réussis<span class="num good" id="ok">0</span></div>
+<div class="stat">Échecs<span class="num bad" id="fail">0</span></div>
+</section>
+<section class="panel"><strong id="status">En attente</strong><p id="detail" class="small">Aucun test lancé.</p><div class="log" id="log" aria-live="polite"></div></section>
+<p class="small">Un test réussi signifie uniquement que le comportement attendu a été observé. Un échec peut être une différence d'implémentation ou une API absente, pas nécessairement une vulnérabilité.</p>
+</main>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id), box=$('log');
+let frame=null,done=0,ok=0,fail=0,busy=false,seq=0;
+function log(s,bad){const line=new Date().toISOString().slice(11,19)+' '+s;box.textContent+=(box.textContent?'\n':'')+line;if(bad)box.scrollTop=box.scrollHeight;}
+function stats(){$('done').textContent=done+'/8';$('ok').textContent=ok;$('fail').textContent=fail;}
+function result(name,passed,detail){done++;if(passed)ok++;else fail++;log((passed?'OK ':'ÉCHEC ')+name+(detail?' — '+detail:''),!passed);stats();}
+function makeFrame(){
+ return new Promise((resolve,reject)=>{
+  frame=document.createElement('iframe');
+  frame.setAttribute('sandbox','allow-scripts allow-same-origin');
+  frame.srcdoc='<!doctype html><meta charset="utf-8"><script>parent.postMessage({probeReady:true}, location.origin);<\\/script>';
+  const timer=setTimeout(()=>reject(new Error('iframe timeout')),5000);
+  function ready(e){if(e.source===frame.contentWindow&&e.data&&e.data.probeReady){clearTimeout(timer);window.removeEventListener('message',ready);resolve();}}
+  window.addEventListener('message',ready);document.body.appendChild(frame);
+ });
+}
+function exchange(payload,transfer){
+ return new Promise((resolve,reject)=>{
+  const id=++seq, timer=setTimeout(()=>{window.removeEventListener('message',handler);reject(new Error('réponse timeout'));},4000);
+  function handler(e){if(e.source!==frame.contentWindow||!e.data||e.data.replyTo!==id)return;clearTimeout(timer);window.removeEventListener('message',handler);if(e.data.error)reject(new Error(e.data.error));else resolve(e.data.value);}
+  window.addEventListener('message',handler);
+  try{frame.contentWindow.postMessage({id,payload},location.origin,transfer||[]);}catch(e){clearTimeout(timer);window.removeEventListener('message',handler);reject(e);}
+ });
+}
+async function run(){
+ if(busy)return;busy=true;$('run').disabled=true;done=ok=fail=0;box.textContent='';stats();$('status').textContent='Tests en cours…';
+ try{await makeFrame();}catch(e){result('Initialisation iframe',false,e.message);finish();return;}
+ const tests=[
+  ['Objet simple',async()=>{const r=await exchange({a:17,b:'hello',c:true});return r.a===17&&r.b==='hello'&&r.c===true;}],
+  ['Référence circulaire',async()=>{const x={name:'cycle'};x.self=x;const r=await exchange(x);return r.self===r&&r.name==='cycle';}],
+  ['Références partagées',async()=>{const shared={v:42};const r=await exchange({a:shared,b:shared});return r.a===r.b&&r.a.v===42;}],
+  ['Map et Set',async()=>{const m=new Map([['a',1],['b',2]]),s=new Set([3,4]);const r=await exchange({m,s});return r.m instanceof Map&&r.m.get('b')===2&&r.s instanceof Set&&r.s.has(4);}],
+  ['Date et RegExp',async()=>{const r=await exchange({d:new Date('2020-01-02T03:04:05.000Z'),re:/ps4\d+/gi});return r.d instanceof Date&&r.d.toISOString()==='2020-01-02T03:04:05.000Z'&&r.re instanceof RegExp&&r.re.source==='ps4\\d+'&&r.re.flags==='gi';}],
+  ['TypedArray',async()=>{const a=new Uint16Array([11,22,33]);const r=await exchange({a});return r.a instanceof Uint16Array&&r.a.length===3&&r.a[1]===22;}],
+  ['ArrayBuffer transféré',async()=>{const b=new ArrayBuffer(16),v=new Uint8Array(b);v[0]=91;v[15]=37;const r=await exchange({b},[b]);return b.byteLength===0&&r.b instanceof ArrayBuffer&&r.b.byteLength===16&&new Uint8Array(r.b)[0]===91&&new Uint8Array(r.b)[15]===37;}],
+  ['Erreur de clonage',async()=>{let threw=false;try{frame.contentWindow.postMessage({id:++seq,payload:{fn:function(){}}},location.origin);}catch(e){threw=e.name==='DataCloneError';}return threw;}]
+ ];
+ for(const [name,fn] of tests){
+  try{const passed=await fn();result(name,passed,passed?'comportement attendu':'résultat inattendu');}
+  catch(e){result(name,false,(e.name||'Error')+': '+(e.message||String(e)));}
+ }
+ finish();
+}
+function finish(){busy=false;$('run').disabled=false;$('status').textContent=fail===0?'Terminé — aucun échec':'Terminé — résultats à examiner';$('detail').textContent=done+' tests · '+ok+' réussis · '+fail+' échecs';if(frame){frame.remove();frame=null;}}
+$('run').addEventListener('click',run);
+$('clear').addEventListener('click',()=>{if(!busy){box.textContent='';$('detail').textContent='Journal effacé.';}});
+})();
+</script>
+</body></html>
