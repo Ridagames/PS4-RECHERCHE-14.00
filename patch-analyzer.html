@@ -28,12 +28,12 @@
 (function(){
 var $=function(id){return document.getElementById(id)};
 var patterns=[
-{name:'Gestion de durée de vie / pointeurs',re:/\\b(WeakPtr|WeakHashSet|WeakRef|RefPtr|Ref<|deref|ref\(|unref|retain|release|delete this|destructor|~[A-Z])\\b/gi,weight:4},
-{name:'Callbacks et réentrance',re:/\\b(callback|thenable|\.then\\s*\\(|Promise|dispatch|invoke|notify|event|handler|fontStateChanged)\\b/gi,weight:3},
-{name:'Itérateurs et conteneurs',re:/\\b(iterator|iterat(e|or)|forEach|Vector|HashSet|HashMap|contains\\s*\\(|remove\\s*\\(|erase\\s*\\()/gi,weight:3},
-{name:'Vérifications et garde-fous',re:/\\b(check|ASSERT|RELEASE_ASSERT|isValid|isNull|nullptr|nullptr|bounds|length|contains)\\b/gi,weight:2},
-{name:'Asynchronisme / tâches',re:/\\b(async|await|schedule|enqueue|queue|microtask|task|resolve|reject)\\b/gi,weight:2},
-{name:'Mémoire / allocation',re:/\\b(malloc|free\\s*\\(|allocate|deallocate|new |delete |memcpy|memmove)\\b/gi,weight:3}
+{name:'Gestion de durée de vie / pointeurs',re:/\b(WeakPtr|WeakHashSet|WeakRef|RefPtr|Ref<|deref|ref\(|unref|retain|release|delete this|destructor|~[A-Z])\b/gi,weight:4},
+{name:'Callbacks et réentrance',re:/\b(callback|thenable|\.then\s*\(|Promise|dispatch|invoke|notify|event|handler|fontStateChanged)\b/gi,weight:3},
+{name:'Itérateurs et conteneurs',re:/\b(iterator|iterat(e|or)|forEach|Vector|HashSet|HashMap|contains\s*\(|remove\s*\(|erase\s*\()/gi,weight:3},
+{name:'Vérifications et garde-fous',re:/\b(check|ASSERT|RELEASE_ASSERT|isValid|isNull|nullptr|nullptr|bounds|length|contains)\b/gi,weight:2},
+{name:'Asynchronisme / tâches',re:/\b(async|await|schedule|enqueue|queue|microtask|task|resolve|reject)\b/gi,weight:2},
+{name:'Mémoire / allocation',re:/\b(malloc|free\s*\(|allocate|deallocate|new |delete |memcpy|memmove)\b/gi,weight:3}
 ];
 function analyze(){
 var raw=$('diff').value,lines=raw.split(/\r?\n/),files=[],current=null,added=[],removed=[],hunks=0;
