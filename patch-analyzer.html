@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 Research Lab — WebKit Patch Analyzer</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:18px;background:#080d16;color:#e9f0fb;font:15px/1.5 system-ui,Arial,sans-serif}main{max-width:1050px;margin:auto}h1{font-size:25px;margin:0}.muted{color:#9eacc0}.panel{background:#111b2a;border:1px solid #263a54;border-radius:14px;padding:16px;margin:14px 0}textarea,input,button{width:100%;padding:11px;border-radius:9px;border:1px solid #3b526f;background:#091321;color:#f5f8ff;font:inherit}textarea{min-height:210px;resize:vertical;font:12px/1.5 ui-monospace,monospace}button{background:#1767d2;border:0;font-weight:700;cursor:pointer;margin-top:10px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#050a11;border:1px solid #1c2a3d;border-radius:10px;padding:12px;max-height:50vh;overflow:auto;font:12px/1.5 ui-monospace,monospace}.tag{display:inline-block;border:1px solid #425a77;border-radius:20px;padding:2px 9px;margin:3px;color:#bcd4f5}.warn{color:#ffd27d}a{color:#8bbcff}
+</style></head><body><main>
+<h1>WEBKIT PATCH ANALYZER <span class="muted">/ PS4 14.00</span></h1>
+<p class="muted">Analyse locale de diffs Git : fonctions touchées, indices de durée de vie mémoire, callbacks, itérateurs et changements de validation.</p>
+<section class="panel">
+<div class="grid"><div><label>Nom / référence du correctif<input id="name" value="CSSFontFace iterateClients — upstream fix"></label></div><div><label>Révision source A (optionnel)<input id="revA" placeholder="commit / tag / firmware"></label></div><div><label>Révision source B (optionnel)<input id="revB" placeholder="commit / tag / firmware"></label></div></div>
+<p>Colle ici le diff unifié Git du correctif (ou le diff entre deux versions du même fichier) :</p>
+<textarea id="diff" placeholder="diff --git a/Source/... b/Source/...&#10;--- a/...&#10;+++ b/...&#10;@@ ... @@&#10;- ancienne ligne&#10;+ nouvelle ligne"></textarea>
+<button id="analyze">Analyser le correctif</button>
+<p class="warn">L'analyse est heuristique et fonctionne hors ligne. Elle ne télécharge pas les sources Sony et ne peut pas déterminer à elle seule si un correctif est inclus dans le firmware PS4 14.00.</p>
+</section>
+<section class="panel"><b>Résultat d'analyse</b><div id="summary" class="muted">En attente d'un diff.</div><pre id="report">Colle un diff puis lance l'analyse.</pre></section>
+<section class="panel"><b>Grille de recherche</b>
+<ul>
+<li>Durée de vie : Ref / RefPtr / WeakPtr / WeakHashSet / retain / release / destruction.</li>
+<li>Réentrance : callbacks, Promise, thenable, event, layout synchrone, mutation DOM.</li>
+<li>Itération : copie de conteneur, invalidation d'itérateur, suppression pendant parcours.</li>
+<li>Validation : bounds checks, null checks, type checks, contains(), guards.</li>
+<li>Concurrence : tâches asynchrones, dispatch, locks et états partagés.</li>
+</ul></section>
+<p><a href="webkit-fuzzer.html">← WebKit Fuzzer</a> · <a href="index.html">Accueil du laboratoire</a></p>
+</main>
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)};
+var patterns=[
+{name:'Gestion de durée de vie / pointeurs',re:/\\b(WeakPtr|WeakHashSet|WeakRef|RefPtr|Ref<|deref|ref\(|unref|retain|release|delete this|destructor|~[A-Z])\\b/gi,weight:4},
+{name:'Callbacks et réentrance',re:/\\b(callback|thenable|\.then\\s*\\(|Promise|dispatch|invoke|notify|event|handler|fontStateChanged)\\b/gi,weight:3},
+{name:'Itérateurs et conteneurs',re:/\\b(iterator|iterat(e|or)|forEach|Vector|HashSet|HashMap|contains\\s*\\(|remove\\s*\\(|erase\\s*\\()/gi,weight:3},
+{name:'Vérifications et garde-fous',re:/\\b(check|ASSERT|RELEASE_ASSERT|isValid|isNull|nullptr|nullptr|bounds|length|contains)\\b/gi,weight:2},
+{name:'Asynchronisme / tâches',re:/\\b(async|await|schedule|enqueue|queue|microtask|task|resolve|reject)\\b/gi,weight:2},
+{name:'Mémoire / allocation',re:/\\b(malloc|free\\s*\\(|allocate|deallocate|new |delete |memcpy|memmove)\\b/gi,weight:3}
+];
+function analyze(){
+var raw=$('diff').value,lines=raw.split(/\r?\n/),files=[],current=null,added=[],removed=[],hunks=0;
+lines.forEach(function(line){if(line.indexOf('diff --git ')===0){current={path:line.replace('diff --git ','').split(' b/').pop(),added:0,removed:0,changes:[]};files.push(current)}else if(line.indexOf('@@')===0){hunks++}else if(current&&line.charAt(0)==='+'&&line.indexOf('+++')!==0){current.added++;added.push(line.slice(1));current.changes.push(line)}else if(current&&line.charAt(0)==='-'&&line.indexOf('---')!==0){current.removed++;removed.push(line.slice(1));current.changes.push(line)}});
+if(!raw.trim()){ $('summary').textContent='Aucun diff fourni.';return}
+var textAll=raw,findings=[],score=0;
+patterns.forEach(function(p){var a=(added.join('\n').match(p.re)||[]).length,r=(removed.join('\n').match(p.re)||[]).length;if(a||r){var impact=Math.min(10,(a+r)*p.weight);score+=impact;findings.push({name:p.name,added:a,removed:r,impact:impact})}});
+var paths=files.map(function(f){return f.path}),functions=[];
+lines.forEach(function(line){var m=line.match(/^@@.*@@\s*(.*)$/);if(m&&m[1])functions.push(m[1].trim())});
+var summary=score>=24?'Nombreux changements dans des zones sensibles : revue manuelle prioritaire.':score>=10?'Plusieurs indices intéressants : inspecter le contexte avant de conclure.':'Peu d’indices heuristiques détectés : cela ne prouve pas l’absence de risque.';
+var out='PATCH : '+($('name').value||'Sans nom')+'\nSOURCE A : '+($('revA').value||'non renseignée')+'\nSOURCE B : '+($('revB').value||'non renseignée')+'\nFICHIERS : '+files.length+' | HUNKS : '+hunks+' | LIGNES + : '+added.length+' | LIGNES - : '+removed.length+'\nSCORE HEURISTIQUE : '+score+' (indice de tri, pas un score CVSS)\n\n';
+out+='FICHIERS TOUCHÉS\n'+(paths.length?paths.map(function(p){return '- '+p}).join('\n'):'Aucun en-tête diff --git détecté')+'\n\n';
+out+='FONCTIONS / CONTEXTES DES HUNKS\n'+(functions.length?functions.map(function(f){return '- '+f}).join('\n'):'Aucun nom de fonction dans les en-têtes')+'\n\n';
+out+='INDICES DÉTECTÉS\n'+(findings.length?findings.map(function(f){return '- '+f.name+': '+f.added+' occurrence(s) ajoutée(s), '+f.removed+' supprimée(s), poids '+f.impact}).join('\n'):'Aucun motif connu détecté')+'\n\n';
+out+='LIGNES AJOUTÉES À RELIRE\n'+(added.length?added.slice(0,160).map(function(x){return '+ '+x}).join('\n'):'Aucune')+'\n\n';
+out+='LIGNES SUPPRIMÉES À RELIRE\n'+(removed.length?removed.slice(0,160).map(function(x){return '- '+x}).join('\n'):'Aucune')+'\n\n';
+out+='INTERPRÉTATION\n'+summary+'\n\nLIMITES\n- Un mot-clé détecté ne démontre pas une vulnérabilité.\n- Un diff partiel peut masquer le véritable contexte.\n- Il faut comparer la révision amont corrigée avec une révision vulnérable, puis établir quelle révision correspond au navigateur cible.\n- La présence d’un correctif dans WebKit amont ne prouve pas son intégration dans le firmware Sony.';
+$('summary').innerHTML='<span class="tag">'+files.length+' fichier(s)</span><span class="tag">'+hunks+' hunk(s)</span><span class="tag">score '+score+'</span><p>'+summary+'</p>';
+$('report').textContent=out;
+}
+$('analyze').onclick=analyze;
+})();
+</script></body></html>
