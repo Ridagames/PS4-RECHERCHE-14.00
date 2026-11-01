@@ -1,25 +1,17 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PS4 14.00 — Browser Probe</title>
-  <style>
-    body { margin: 2rem; background: #10141c; color: #e8edf5; font: 16px/1.5 Arial, sans-serif; }
-    main { max-width: 720px; margin: auto; padding: 1.5rem; background: #1b2431; border-radius: 12px; }
-    h1 { font-size: 1.4rem; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; color: #9fe3bd; }
-    .note { color: #aab7c8; font-size: .9rem; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PS4 Research Lab — Firmware 14.00</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:20px;background:#080d16;color:#e9f0fb;font:16px/1.5 system-ui,Arial,sans-serif}main{max-width:850px;margin:auto}.hero,.tool{background:#111b2a;border:1px solid #263a54;border-radius:16px;padding:20px;margin:14px 0}.muted{color:#9eacc0}.tool a{display:block;color:#fff;text-decoration:none;font-weight:700;font-size:18px}.tool p{color:#aebbd0;margin-bottom:0}.tag{display:inline-block;border:1px solid #425a77;border-radius:20px;padding:3px 10px;color:#bcd4f5;font-size:12px}
+</style>
 </head>
-<body>
-  <main>
-    <h1>PS4 14.00 — Browser Probe</h1>
-    <p>Test de chargement HTTPS et d’exécution JavaScript uniquement.</p>
-    <pre id="out">Initialisation…</pre>
-    <p><a href="typedarray.html" style="color:#9fe3bd">Ouvrir les tests TypedArray / ArrayBuffer</a></p>
-    <p class="note">Cette sonde ne teste aucune vulnérabilité et ne modifie pas la console.</p>
-  </main>
-  <script src="probe.js"></script>
-</body>
-</html>
+<body><main>
+<section class="hero"><span class="tag">LABORATOIRE DE RECHERCHE</span><h1>PS4 WebKit Research — 14.00</h1><p class="muted">Fuzzing reproductible, analyse de correctifs et documentation des anomalies du navigateur PS4.</p></section>
+<section class="tool"><a href="webkit-fuzzer.html">01 — WEBKIT FUZZER →</a><p>Tests déterministes des familles mémoire, objets, DOM, CSS, asynchronisme et chaînes. Export JSON, graines reproductibles et limites de ressources.</p></section>
+<section class="tool"><a href="patch-analyzer.html">02 — WEBKIT PATCH ANALYZER →</a><p>Analyse hors ligne des diffs Git, fonctions touchées et indices de durée de vie, réentrance, itérateurs et garde-fous.</p></section>
+<section class="tool"><a href="fontface-uaf.html">03 — CSSFontFace UAF Probe →</a><p>Conserve le test ciblé précédent pour comparer les résultats avec les analyses de code.</p></section>
+<p class="muted">Les résultats du laboratoire sont des indices de recherche, pas une preuve de vulnérabilité ni de compatibilité avec un firmware donné.</p>
+</main></body></html>
