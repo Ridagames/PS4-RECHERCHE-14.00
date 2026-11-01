@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Structured Clone — Frame</title></head>
+<body><script>
+(function(){
+'use strict';
+window.addEventListener('message',function(e){
+ if(e.origin!==location.origin||!e.data||typeof e.data.id!=='number')return;
+ var payload=e.data.payload;
+ var transfer=[];
+ if(payload&&payload.b instanceof ArrayBuffer)transfer.push(payload.b);
+ try{
+  parent.postMessage({replyTo:e.data.id,value:payload},location.origin,transfer);
+ }catch(err){
+  parent.postMessage({replyTo:e.data.id,error:(err.name||'Error')+': '+(err.message||String(err))},location.origin);
+ }
+});
+parent.postMessage({probeReady:true},location.origin);
+})();
+</script></body></html>
