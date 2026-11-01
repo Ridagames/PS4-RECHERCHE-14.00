@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PS4 14.00 — TypedArray diagnostics</title>
+  <style>
+    body { margin: 1.2rem; background: #10141c; color: #e8edf5; font: 16px/1.5 Arial, sans-serif; }
+    main { max-width: 760px; margin: auto; padding: 1.2rem; background: #1b2431; border-radius: 12px; }
+    h1 { font-size: 1.35rem; }
+    a { color: #9fe3bd; }
+    #status { color: #9fe3bd; font-weight: bold; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0d121a; padding: 1rem; border-radius: 8px; }
+    .note { color: #aab7c8; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="./">← Retour à l'accueil</a></p>
+    <h1>TypedArray / ArrayBuffer — diagnostics</h1>
+    <p>Tests de comportement JavaScript avec tailles modestes. Aucun exploit, aucune écriture hors limites ni allocation volumineuse.</p>
+    <p id="status">Préparation des tests…</p>
+    <pre id="log" aria-live="polite"></pre>
+    <p class="note">Un « RangeError attendu » est un résultat normal. Une exception JavaScript interceptée n'est pas un crash. Si le navigateur se ferme ou si la console redémarre, ne relance pas le test en boucle : note le numéro affiché juste avant l'arrêt.</p>
+  </main>
+<script>
+(function () {
+  var log = document.getElementById('log');
+  var status = document.getElementById('status');
+  var ok = 0;
+  var errors = 0;
+  var finished = 0;
+  var total = 7;
+
+  function line(message) {
+    log.textContent += message + '\n';
+  }
+
+  function finish() {
+    finished += 1;
+    if (finished === total) {
+      status.textContent = 'Terminé — ' + ok + ' OK, ' + errors + ' erreur(s) sur ' + total + ' tests.';
+      line('');
+      line('BILAN : ' + ok + ' OK ; ' + errors + ' erreur(s).');
+    }
+  }
+
+  var tests = [
+    {
+      name: 'Création ArrayBuffer (16 octets)',
+      run: function () {
+        var buffer = new ArrayBuffer(16);
+        if (buffer.byteLength !== 16) throw new Error('byteLength inattendu : ' + buffer.byteLength);
+      }
+    },
+    {
+      name: 'Création Uint8Array et lecture/écriture',
+      run: function () {
+        var buffer = new ArrayBuffer(8);
+        var view = new Uint8Array(buffer);
+        view[0] = 0x2A;
+        view[7] = 0x7F;
+        if (view[0] !== 0x2A || view[7] !== 0x7F) throw new Error('valeurs relues incorrectes');
+      }
+    },
+    {
+      name: 'TypedArray.slice()',
+      run: function () {
+        var source = new Uint8Array([10, 20, 30, 40]);
+        var copy = source.slice(1, 3);
+        if (copy.length !== 2 || copy[0] !== 20 || copy[1] !== 30) throw new Error('résultat slice inattendu');
+      }
+    },
+    {
+      name: 'TypedArray.subarray()',
+      run: function () {
+        var source = new Uint8Array([10, 20, 30, 40]);
+        var view = source.subarray(1, 3);
+        if (view.length !== 2 || view[0] !== 20 || view[1] !== 30) throw new Error('résultat subarray inattendu');
+        view[0] = 99;
+        if (source[1] !== 99) throw new Error('subarray ne partage pas le buffer comme attendu');
+      }
+    },
+    {
+      name: 'DataView — lecture à la dernière position valide',
+      run: function () {
+        var buffer = new ArrayBuffer(4);
+        var view = new DataView(buffer);
+        view.setUint32(0, 0x12345678, false);
+        if (view.getUint32(0, false) !== 0x12345678) throw new Error('valeur DataView incorrecte');
+        view.setUint8(3, 0xAB);
+        if (view.getUint8(3) !== 0xAB) throw new Error('lecture au dernier octet incorrecte');
+      }
+    },
+    {
+      name: 'DataView — accès hors bornes (RangeError attendu)',
+      expectedException: true,
+      run: function () {
+        var view = new DataView(new ArrayBuffer(4));
+        view.getUint32(1, false);
+        throw new Error('Aucune RangeError : getUint32(1) a terminé sur un buffer de 4 octets');
+      }
+    },
+    {
+      name: 'slice() — copie indépendante de l’original',
+      run: function () {
+        var original = new Uint8Array([1, 2, 3, 4]);
+        var copy = original.slice(0);
+        copy[0] = 99;
+        if (original[0] !== 1) throw new Error('la modification de la copie a affecté l’original');
+        if (copy[0] !== 99) throw new Error('la copie ne contient pas la modification attendue');
+      }
+    }
+  ];
+
+  tests.forEach(function (test, index) {
+    window.setTimeout(function () {
+      var number = index + 1;
+      status.textContent = 'Test ' + number + '/' + total + ' en cours : ' + test.name;
+      line('Test ' + number + ' — EN COURS : ' + test.name);
+      try {
+        test.run();
+        if (test.expectedException) {
+          throw new Error('Le test devait lever une RangeError, mais aucune exception attendue n’a été reçue.');
+        }
+        ok += 1;
+        line('  RÉSULTAT : OK');
+      } catch (error) {
+        if (test.expectedException && error && error.name === 'RangeError') {
+          ok += 1;
+          line('  RÉSULTAT : RangeError attendue (OK)');
+        } else {
+          errors += 1;
+          line('  RÉSULTAT : ERREUR — ' + (error && error.name ? error.name : 'Error') + ' : ' + (error && error.message ? error.message : String(error)));
+        }
+      }
+      finish();
+    }, index * 250);
+  });
+})();
+</script>
+</body>
+</html>
