@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 14.00 — WebKit Fuzzer</title>
+<style>
+body{background:#090e17;color:#eaf0fa;font:15px system-ui;max-width:900px;margin:auto;padding:16px}
+section{background:#141e2d;border:1px solid #30445d;border-radius:12px;padding:14px;margin:12px 0}
+button,input{padding:10px;margin:4px;border-radius:8px;border:1px solid #49617e;background:#0b1422;color:#fff}
+button{background:#246fe0;font-weight:bold}button:disabled{opacity:.5}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#050910;padding:12px;border-radius:8px;max-height:48vh;overflow:auto}
+small{color:#aab8cc}.warn{color:#ffcf75}
+</style>
+<h1>WebKit Fuzzer — PS4 14.00</h1>
+<p>Fuzzing déterministe et borné : mémoire, TypedArray, DataView, objets, chaînes et DOM.</p>
+<section>
+<label>Graine <input id="seed" value="14000042" inputmode="numeric"></label>
+<label>Opérations <input id="count" value="5000" inputmode="numeric"></label>
+<p>État : <b id="state">Prêt</b> · Étape : <b id="step">0</b></p>
+<p>OK : <b id="ok">0</b> · Exceptions : <b id="err">0</b></p>
+<button id="start">Lancer le fuzzing</button><button id="stop">Arrêter</button><button id="clear">Effacer le journal</button>
+<p class="warn">Une pression mémoire peut faire planter le navigateur. Aucun accès hors limites ni écriture système n'est effectué.</p>
+</section>
+<section><b>Journal — dernières opérations</b><pre id="log">Page chargée. Note la graine pour reproduire un résultat.</pre></section>
+<section><b>Dernière session sauvegardée</b><pre id="previous">Aucune session précédente.</pre></section>
+<p><a href="engine-diagnostics.html">Retour aux diagnostics</a></p>
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)},seed=14000042,rng=1,ok=0,err=0,stop=false,busy=false,step=0,lines=[];
+function random(){rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296}
+function int(n){return Math.floor(random()*n)}
+function record(s){var line=step+' | '+s;lines.push(line);if(lines.length>60)lines.shift();$('log').textContent=lines.join('\n');$('log').scrollTop=$('log').scrollHeight}
+function persist(){try{localStorage.setItem('ps4_webkit_fuzzer_last',JSON.stringify({seed:seed,step:step,ok:ok,err:err,lines:lines.slice(-40),time:new Date().toISOString()}))}catch(e){}}
+function check(v,m){if(!v)throw new Error(m)}
+function operation(){
+var kind=int(8),n=int(4096)+1;
+if(kind===0){var b=new ArrayBuffer(n),u=new Uint8Array(b),idx=int(n);u[idx]=int(256);check(u[idx]<256,'TypedArray readback');}
+else if(kind===1){var b2=new ArrayBuffer(n+8),d=new DataView(b2),p=int(n);d.setUint32(p,0x12345678,true);check(d.getUint32(p,true)===0x12345678,'DataView readback');}
+else if(kind===2){var a=new Uint8Array(n);for(var i=0;i<Math.min(n,64);i++)a[i]=i;var start=int(n),end=start+int(n-start+1),v=a.subarray(start,end),c=v.slice();check(c.length===v.length,'slice length');if(v.length){v[0]^=255;check(c[0]!==v[0]||c.length===0,'slice copy isolation');}}
+else if(kind===3){var proto={a:int(1000)},o=Object.create(proto);for(var j=0;j<12;j++)o['k'+j]=random();var keys=Object.keys(o);check(keys.length===12&&o.a===proto.a,'object/prototype');delete o.k3;check(!Object.prototype.hasOwnProperty.call(o,'k3'),'delete property');}
+else if(kind===4){var s=('PS4🚀é漢字-'+int(999999)).repeat(1+int(20));var t=s.slice(int(s.length));check(typeof t==='string'&&s.indexOf('漢字')>=0,'string operation');}
+else if(kind===5){var host=document.createElement('div'),frag=document.createDocumentFragment(),num=1+int(24);for(var k=0;k<num;k++){var e=document.createElement(k%2?'span':'div');e.textContent='x'+k;e.setAttribute('data-i',String(k));frag.appendChild(e)}host.appendChild(frag);check(host.childNodes.length===num,'DOM append');host.replaceChild(document.createElement('i'),host.firstChild);host.textContent='';check(host.childNodes.length===0,'DOM clear');}
+else if(kind===6){var arr=[];for(var q=0;q<300;q++)arr.push({v:random(),s:'gc-'+q,sub:[q,q+1,q+2]});var total=arr.reduce(function(x,y){return x+y.sub[1]},0);check(total>0,'object graph');arr=null;}
+else{var size=(1+int(8))*1024*1024,buf=new ArrayBuffer(size),view=new Uint8Array(buf);view[0]=0x5a;view[size-1]=0xa5;check(view[0]===0x5a&&view[size-1]===0xa5,'allocation edge readback');buf=null;view=null;}
+}
+async function run(){seed=(parseInt($('seed').value,10)>>>0)||14000042;rng=seed;var count=Math.max(1,Math.min(10000,parseInt($('count').value,10)||5000));ok=0;err=0;step=0;stop=false;lines=[];$('ok').textContent='0';$('err').textContent='0';record('DÉBUT seed='+seed+' opérations='+count);$('state').textContent='En cours';
+for(var i=0;i<count&&!stop;i++){step=i+1;$('step').textContent=step;var before=rng;try{operation();ok++;if(step%25===0)record('OK — RNG '+before.toString(16));}catch(e){err++;record('EXCEPTION seed='+seed+' étape='+step+' rng='+before.toString(16)+' '+e.name+': '+e.message);}
+$('ok').textContent=ok;$('err').textContent=err;
+if(step%50===0){persist();await new Promise(function(resolve){setTimeout(resolve,0)});}
+}
+record('FIN seed='+seed+' étapes='+step+' OK='+ok+' exceptions='+err+' arrêt='+stop);persist();$('state').textContent=stop?'Arrêté':'Terminé';busy=false;$('start').disabled=false;
+}
+$('start').onclick=function(){if(busy)return;busy=true;$('start').disabled=true;run().catch(function(e){record('ERREUR FATALE '+e);persist();busy=false;$('start').disabled=false;$('state').textContent='Erreur';});};
+$('stop').onclick=function(){stop=true;record('Arrêt demandé');persist();};
+$('clear').onclick=function(){lines=[];$('log').textContent='Journal effacé.';};
+try{var old=localStorage.getItem('ps4_webkit_fuzzer_last');if(old){var x=JSON.parse(old);$('previous').textContent='Seed '+x.seed+' | étape '+x.step+' | OK '+x.ok+' | exceptions '+x.err+' | '+x.time+'\n'+(x.lines||[]).join('\n');}}catch(e){$('previous').textContent='Historique local indisponible.';}
+})();
+</script></html>
