@@ -35,7 +35,7 @@ function makeFrame(){
  return new Promise((resolve,reject)=>{
   frame=document.createElement('iframe');
   frame.setAttribute('sandbox','allow-scripts allow-same-origin');
-  frame.srcdoc='<!doctype html><meta charset="utf-8"><script>parent.postMessage({probeReady:true}, location.origin);<\\/script>';
+  frame.srcdoc='<!doctype html><meta charset="utf-8"><script>window.addEventListener("message",function(e){if(!e.data||!Object.prototype.hasOwnProperty.call(e.data,"id"))return;var p=e.data.payload;var t=[];if(p&&p.b instanceof ArrayBuffer)t.push(p.b);try{parent.postMessage({replyTo:e.data.id,value:p},e.origin,t);}catch(err){parent.postMessage({replyTo:e.data.id,error:err.name+": "+err.message},e.origin);}});parent.postMessage({probeReady:true}, location.origin);<\\/script>';
   const timer=setTimeout(()=>reject(new Error('iframe timeout')),5000);
   function ready(e){if(e.source===frame.contentWindow&&e.data&&e.data.probeReady){clearTimeout(timer);window.removeEventListener('message',ready);resolve();}}
   window.addEventListener('message',ready);document.body.appendChild(frame);
