@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 14.00 - diagnostics JS</title>
+<style>
+body{background:#0b1019;color:#eaf0fa;font:15px system-ui;max-width:850px;margin:auto;padding:18px}
+section{background:#151f2e;border:1px solid #304158;border-radius:12px;padding:15px;margin:14px 0}
+button{padding:11px 15px;margin:4px;border:0;border-radius:8px;background:#2876e8;color:white;font-weight:bold}
+#log{white-space:pre-wrap;overflow-wrap:anywhere;background:#050910;padding:12px;border-radius:8px;max-height:55vh;overflow:auto}
+small{color:#aab8cc}
+</style>
+<h1>PS4 14.00 — diagnostics JavaScript</h1>
+<p>Tests bornés de chaînes Unicode, expressions régulières, objets, JSON, Promises et DOM.</p>
+<section>
+<div>Module : <b id="module">—</b> · Étape : <b id="step">0</b></div>
+<div>OK : <b id="ok">0</b> · Erreurs : <b id="err">0</b></div>
+<p id="status">Prêt.</p>
+<button id="start">Lancer</button><button id="stop">Arrêter</button><button id="clear">Effacer le journal</button>
+</section>
+<section><b>Journal</b><pre id="log">Page chargée.</pre></section>
+<small>Tests de comportement JavaScript standard, sans payload d'exploitation ni écriture mémoire hors limites. Une exception JS est différente d'un crash du navigateur.</small>
+<p><a href="index.html">Retour</a></p>
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)},ok=0,err=0,stop=false,busy=false;
+function log(s){$('log').textContent+='\n'+new Date().toISOString().slice(11,23)+' '+s;$('log').scrollTop=$('log').scrollHeight}
+function check(v,m){if(!v)throw Error(m)}
+function test(n,f){try{f();ok++;log('OK '+n)}catch(e){err++;log('ERREUR '+n+' : '+e.name+' — '+e.message)}$('ok').textContent=ok;$('err').textContent=err}
+function pause(){return new Promise(function(r){setTimeout(r,0)})}
+async function group(name,fn){$('module').textContent=name;await fn()}
+async function repeat(name,count,fn){for(var i=0;i<count&&!stop;i++){$('step').textContent=i+1;test(name+' '+(i+1),fn.bind(null,i));if(i%10===9)await pause()}}
+async function run(){
+await group('Unicode',function(){return repeat('Unicode round-trip',80,function(i){var s='A🚀é漢字Z'+i;check(Array.from(s).join('')===s,'Unicode round-trip différent');check(s.indexOf('漢字')>=0,'indexOf incorrect')})});
+await group('Expressions régulières',function(){return repeat('RegExp',60,function(i){var s=('alpha-123-BETA_').repeat(8);var m=s.match(/([a-z]+)-(\d+)-([A-Z]+)_/gi);check(m&&m.length===8,'nombre de matches incorrect');check(/^([a-z]+)-(\d+)-([A-Z]+)_$/i.test('alpha-123-BETA_'),'test regex incorrect')})});
+await group('Objets et prototypes',function(){return repeat('Objets',80,function(i){var p={tag:'parent'},o=Object.create(p);o.value=i;Object.defineProperty(o,'x',{value:7,enumerable:true});check(o.tag==='parent'&&o.value===i,'héritage incorrect');check(Object.keys(o).join(',')==='value','énumération incorrecte');check(Object.getPrototypeOf(o)===p,'prototype incorrect')})});
+await group('JSON',function(){return repeat('JSON',80,function(i){var a={n:i,items:[1,'deux',true,null],nested:{rocket:'🚀'}};var b=JSON.parse(JSON.stringify(a));check(b.n===i&&b.items[1]==='deux'&&b.nested.rocket==='🚀','aller-retour JSON incorrect');var threw=false;try{JSON.parse('{"x":}')}catch(e){threw=e instanceof SyntaxError}check(threw,'JSON invalide non rejeté par SyntaxError')})});
+await group('Promises',async function(){for(var i=0;i<40&&!stop;i++){$('step').textContent=i+1;await new Promise(function(resolve){var order=[];Promise.resolve().then(function(){order.push('microtask')});setTimeout(function(){order.push('timer');test('Ordre Promise/timer '+(i+1),function(){check(order[0]==='microtask'&&order[1]==='timer','ordre inattendu')});resolve()},0)})}});
+await group('DOM',function(){return repeat('DOM',60,function(i){var host=document.createElement('div'),frag=document.createDocumentFragment();for(var j=0;j<8;j++){var el=document.createElement('span');el.textContent='n'+j;el.setAttribute('data-n',String(j));frag.appendChild(el)}host.appendChild(frag);check(host.children.length===8,'nombre enfants incorrect');check(host.children[7].getAttribute('data-n')==='7','attribut incorrect');host.removeChild(host.firstChild);check(host.children.length===7,'suppression incorrecte')})});
+}
+async function start(){if(busy)return;busy=true;stop=false;ok=0;err=0;$('ok').textContent=0;$('err').textContent=0;$('start').disabled=true;log('=== DÉBUT ===');try{await run()}catch(e){err++;$('err').textContent=err;log('ERREUR GLOBALE '+e.name+' — '+e.message)}log('=== FIN : '+ok+' OK, '+err+' erreurs; arrêt demandé : '+stop+' ===');$('status').textContent=stop?'Arrêt demandé':'Terminé';$('start').disabled=false;busy=false}
+$('start').onclick=start;$('stop').onclick=function(){stop=true;log('Arrêt demandé')};$('clear').onclick=function(){$('log').textContent='Journal effacé'};
+})();
+</script>
