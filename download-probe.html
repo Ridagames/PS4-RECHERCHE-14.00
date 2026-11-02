@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS4 14.00 — Download Event Loop Probe</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0b1020;color:#edf2ff;font:16px Arial,sans-serif;padding:18px}
+main{max-width:760px;margin:auto}.card{background:#151d32;border:1px solid #293754;border-radius:16px;padding:16px;margin:12px 0}
+h1{font-size:22px;margin:4px 0 8px}h2{font-size:17px;margin:0 0 10px}.muted{color:#aab7d1;font-size:13px;line-height:1.5}
+button,a.btn{display:block;width:100%;border:0;border-radius:11px;padding:14px;margin:9px 0;background:#315fe8;color:white;font-weight:700;text-align:center;text-decoration:none;font-size:15px}
+button.secondary,a.secondary{background:#293754}.metric{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #293754}.metric strong{font-variant-numeric:tabular-nums}
+#status{color:#9fc1ff;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d18;padding:12px;border-radius:10px;font-size:12px;max-height:260px;overflow:auto}
+.warning{border-color:#77552a;background:#241d14}.warning strong{color:#ffd18a}
+</style>
+</head>
+<body><main>
+<div class="card">
+<h1>PS4 14.00 — Download Probe</h1>
+<p class="muted">Mesure les pauses de la boucle JavaScript pendant un téléchargement. Fais un essai à la fois et attends 3 secondes entre les essais.</p>
+<div id="status">Surveillance active</div>
+</div>
+<div class="card">
+<h2>1. Mesures en direct</h2>
+<div class="metric"><span>Temps depuis le démarrage</span><strong id="elapsed">0,0 s</strong></div>
+<div class="metric"><span>Plus grand intervalle JS observé</span><strong id="gap">—</strong></div>
+<div class="metric"><span>Dernier intervalle JS</span><strong id="last">—</strong></div>
+<div class="metric"><span>Événements de visibilité</span><strong id="visibility">0</strong></div>
+<button class="secondary" id="reset" type="button">Réinitialiser les mesures</button>
+</div>
+<div class="card">
+<h2>2. Téléchargements de test</h2>
+<p class="muted">Clique sur un seul fichier. Le fichier .pkg est un simple texte inoffensif portant cette extension pour tester le traitement du téléchargement. Ne tente pas de l'installer.</p>
+<a class="btn" href="./probe.txt" download="probe.txt">Télécharger le test TXT</a>
+<a class="btn secondary" href="./probe.bin" download="probe.bin">Télécharger le test BIN</a>
+<a class="btn secondary" href="./probe.pkg" download="probe.pkg">Télécharger le test PKG (fichier factice)</a>
+</div>
+<div class="card">
+<h2>3. Journal</h2>
+<pre id="log">Initialisation…</pre>
+<button class="secondary" id="copy" type="button">Copier le rapport</button>
+</div>
+<div class="card warning">
+<strong>Important</strong>
+<p class="muted">Ce test mesure uniquement la réactivité de la boucle JavaScript de cette page. Un intervalle élevé ne prouve ni une faille, ni une corruption mémoire, ni que le navigateur a exécuté une vérification de sécurité. Les fichiers sont de simples marqueurs de test.</p>
+</div>
+</main>
+<script>
+(function(){
+  var start=performance.now(), last=start, maxGap=0, lastGap=0, vis=0, samples=0;
+  var logEl=document.getElementById('log');
+  var lines=[];
+  function stamp(){return ((performance.now()-start)/1000).toFixed(2)+'s';}
+  function log(s){lines.push('['+stamp()+'] '+s);if(lines.length>80)lines.shift();logEl.textContent=lines.join('\\n');}
+  function tick(){
+    var now=performance.now();lastGap=now-last;last=now;samples++;
+    if(lastGap>maxGap)maxGap=lastGap;
+    document.getElementById('elapsed').textContent=((now-start)/1000).toFixed(1)+' s';
+    document.getElementById('gap').textContent=maxGap.toFixed(1)+' ms';
+    document.getElementById('last').textContent=lastGap.toFixed(1)+' ms';
+    requestAnimationFrame(tick);
+  }
+  document.addEventListener('visibilitychange',function(){vis++;document.getElementById('visibility').textContent=String(vis);log('visibilitychange: '+document.visibilityState);});
+  window.addEventListener('blur',function(){log('window blur');});
+  window.addEventListener('focus',function(){log('window focus');});
+  document.querySelectorAll('a[download]').forEach(function(a){
+    a.addEventListener('click',function(){log('clic download: '+a.getAttribute('download'));document.getElementById('status').textContent='Téléchargement déclenché — observe le retour de la page';});
+  });
+  document.getElementById('reset').addEventListener('click',function(){
+    start=performance.now();last=start;maxGap=0;lastGap=0;vis=0;samples=0;lines=[];log('Mesures réinitialisées');document.getElementById('visibility').textContent='0';document.getElementById('status').textContent='Surveillance active';
+  });
+  document.getElementById('copy').addEventListener('click',function(){
+    var report='PS4 Download Probe\\n'+lines.join('\\n')+'\\nMax gap: '+maxGap.toFixed(1)+' ms\\nSamples: '+samples+'\\nVisibility events: '+vis;
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(report).then(function(){log('Rapport copié');}).catch(function(){log('Copie impossible — capture le journal');});}
+    else{log('Presse longuement le journal pour le copier');}
+  });
+  log('Surveillance démarrée');
+  requestAnimationFrame(tick);
+})();
+</script>
+</body></html>
